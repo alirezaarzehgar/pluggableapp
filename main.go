@@ -1,41 +1,34 @@
 package main
 
 import (
-	"io"
 	"log"
+	"net/http"
 	"os"
 	"plugin"
+	"strings"
 
-	"gopkg.in/yaml.v3"
+	"github.com/labstack/echo/v4"
 )
 
 type PluginInterface interface {
-	Todo(data ...any)
+	Register(e *echo.Echo)
 }
 
-func main() {
-	f, err := os.Open("./config.yaml")
+func RegisterPluginRoutes(e *echo.Echo) {
+	de, err := os.ReadDir("./plugins")
 	if err != nil {
-		log.Fatal("cannot open file: %w", err)
+		log.Fatal("cannot read plugins dir:", err)
 	}
 
-	data, err := io.ReadAll(f)
-	if err != nil {
-		log.Fatal("cannot read file:", err)
-	}
+	for _, d := range de {
+		name := "./plugins/" + d.Name()
+		if !strings.HasSuffix(name, ".so") {
+			continue
+		}
 
-	var conf struct {
-		Plugins []string `yaml:"plugins"`
-	}
-	err = yaml.Unmarshal(data, &conf)
-	if err != nil {
-		log.Fatal("cannot unmarshal data:", err)
-	}
-
-	for _, p := range conf.Plugins {
-		plugin, err := plugin.Open(p)
+		plugin, err := plugin.Open(name)
 		if err != nil {
-			log.Fatal("err:", err)
+			log.Fatal("cannot open plugin:", err)
 		}
 
 		v, err := plugin.Lookup("Plugin")
@@ -44,6 +37,22 @@ func main() {
 		}
 
 		extractedPlugin := v.(PluginInterface)
-		extractedPlugin.Todo()
+		extractedPlugin.Register(e)
 	}
+}
+
+func TODOHandler(c echo.Context) error {
+	return c.String(http.StatusOK, "TODO Handler")
+}
+
+func main() {
+	e := echo.New()
+
+	e.GET("/api/foo", TODOHandler)
+	e.GET("/api/bar", TODOHandler)
+	e.GET("/api/baz", TODOHandler)
+
+	RegisterPluginRoutes(e)
+
+	e.Logger.Fatal(e.Start(":8000"))
 }
